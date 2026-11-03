@@ -8,7 +8,7 @@ and GitHub Actions. The app is deliberately simple; the infrastructure, pipeline
 operations are the point.
 
 ## Architecture (dev)
-- Region: ca-central-1. VPC across 2 AZs: 2 public subnets (ALB + ECS tasks), 2 private subnets (RDS).
+- Region: us-east-2. VPC across 2 AZs: 2 public subnets (ALB + ECS tasks), 2 private subnets (RDS).
 - No NAT gateway. Tasks get public IPs only to pull images; their security group allows inbound only from the ALB.
 - ECS Fargate, ARM64, 0.25 vCPU / 0.5 GB. ECR with scan on push and a keep-3-images lifecycle rule.
 - Aurora Serverless v2 PostgreSQL 16.x (aws_rds_cluster + one db.serverless aws_rds_cluster_instance),
