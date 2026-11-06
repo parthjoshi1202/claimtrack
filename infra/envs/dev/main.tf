@@ -27,8 +27,7 @@ provider "aws" {
   }
 }
 
-resource "aws_ssm_parameter" "hello" {
-  name  = "/claimtrack/dev/hello"
-  type  = "String"
-  value = "world"
+module "network" {
+  source = "../../modules/network"
+  name   = "claimtrack-dev"
 }
