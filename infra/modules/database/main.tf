@@ -20,7 +20,7 @@ resource "random_password" "db" {
 
 # 2. Store Database Password Securely in SSM Parameter Store
 resource "aws_ssm_parameter" "db_password" {
-  name        = "/claimtrack/dev/db_password"
+  name        = "/${var.name}/db_password"
   description = "Master password for ClaimTrack PostgreSQL Aurora database"
   type        = "SecureString"
   value       = random_password.db.result
@@ -73,6 +73,7 @@ resource "aws_rds_cluster" "this" {
   backup_retention_period = 1
   skip_final_snapshot     = true
   deletion_protection     = false
+  apply_immediately       = true
 
   serverlessv2_scaling_configuration {
     min_capacity             = 0

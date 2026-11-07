@@ -21,5 +21,5 @@ variable "allowed_security_group_id" {
 variable "engine_version" {
   description = "Aurora PostgreSQL engine version (e.g., 16.1 or 16.2)"
   type        = string
-  default     = "16.8"
+  default     = "16.15"
 }
