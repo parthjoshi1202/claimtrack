@@ -13,9 +13,9 @@ if not DATABASE_URL:
     db_port = os.getenv("DB_PORT") or os.getenv("POSTGRES_PORT", "5432")
     db_name = os.getenv("DB_NAME") or os.getenv("POSTGRES_DB", "claimtrack")
 
-    # Uses psycopg2 driver (change to postgresql+asyncpg:// if using async SQLAlchemy)
+    # Uses psycopg3 driver (change to postgresql+asyncpg:// if using async SQLAlchemy)
     DATABASE_URL = (
-        f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+        f"postgresql+psycopg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
     )
 
 engine = create_engine(DATABASE_URL)

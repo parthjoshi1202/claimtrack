@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float
-from database import Base
+from app.database import Base
 
 class ClaimModel(Base):
     __tablename__ = "claims"

@@ -3,8 +3,8 @@ from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from database import engine, Base, get_db
-from models import ClaimModel
+from app.database import engine, Base, get_db
+from app.models import ClaimModel
 
 # Create DB tables automatically on startup
 Base.metadata.create_all(bind=engine)

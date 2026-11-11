@@ -43,7 +43,7 @@ module "service" {
   name                      = "claimtrack-dev"
   vpc_id                    = module.network.vpc_id
   public_subnet_ids         = module.network.public_subnet_ids
-  image_tag                 = "v1"
+  image_tag                 = var.image_tag
   db_host                   = module.database.endpoint
   db_name                   = module.database.db_name
   db_username               = module.database.username
@@ -65,6 +65,15 @@ module "database" {
 output "application_url" {
   description = "Public HTTP endpoint for the ClaimTrack application"
   value       = "http://${module.service.alb_dns_name}"
+}
+
+variable "image_tag" {
+  type    = string
+  default = "v1"
+}
+
+output "ecr_repository_url" {
+  value = module.service.ecr_repository_url
 }
 
 output "db_endpoint" {
