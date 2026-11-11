@@ -48,4 +48,26 @@ docker buildx build --platform linux/arm64 -t $REPO:v1 --push .
 # 4. Verify remote ECR image availability
 aws ecr list-images --repository-name claimtrack-dev
 
+
+
+## Deployment & Troubleshooting Notes
+
+### Terraform State & Plan Integrity
+- **Plan File Usage:** Running `terraform apply` without `-var image_tag=v...` causes Terraform to fall back to the default variable value in `variables.tf`, resulting in a no-op apply. 
+- **CI/CD Best Practice:** Always run `terraform plan -var image_tag=<tag> -out=tfplan` followed by `terraform apply tfplan`. This guarantees that the exact execution plan reviewed during `plan` is what gets applied, matching how CI/CD pipelines (like GitHub Actions) execute deployments safely.
+
+### ECS & Runtime Troubleshooting Summary
+1. **WSL/Docker Desktop ECR Login Failure (`401 Unauthorized` on Push):**
+   - *Symptom:* Docker build succeeded, but `docker push` failed with `401 Unauthorized` and `The stub received bad data.`
+   - *Root Cause:* Docker Desktop's credential helper (`desktop.exe`) in WSL failed to store the ECR token in Windows Credential Manager.
+   - *Fix:* Cleared `"credsStore": ""` in `~/.docker/config.json` to store authentication directly in memory for the active terminal session.
+
+2. **ECS Task Runtime Crash (`ModuleNotFoundError`):**
+   - *Symptom:* ECS tasks crashed on startup with `ModuleNotFoundError: No module named 'models'` (or `database`).
+   - *Root Cause:* Uvicorn executes from the project root (`app.main:app`), unlike local execution via `fastapi run`, requiring explicit module package prefixes.
+   - *Fix:* Standardized all internal imports in `app/*.py` using explicit package paths (e.g., `from app.database import Base`, `from app.models import ClaimModel`). Added `pytest.ini` with `pythonpath = .` so test imports mirror runtime execution.
+
+3. **Database Driver Standardization:**
+   - *Fix:* Updated SQLAlchemy database connection strings to use `postgresql+psycopg://` explicitly for `psycopg` (v3) compatibility.
+
 ```
