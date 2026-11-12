@@ -70,4 +70,26 @@ aws ecr list-images --repository-name claimtrack-dev
 3. **Database Driver Standardization:**
    - *Fix:* Updated SQLAlchemy database connection strings to use `postgresql+psycopg://` explicitly for `psycopg` (v3) compatibility.
 
+## AWS ECS Deployment & Infrastructure Troubleshooting Notes
+
+### 1. Terraform State & Execution Plan Integrity
+- **Plan File Lock (`-out=tfplan`):** Running `terraform apply` without passing `-var image_tag=v3` defaults to base variable definitions, resulting in a no-op apply where no ECS task updates occur.
+- **CI/CD Alignment:** Always run `terraform plan -var image_tag=v3 -out=tfplan` followed directly by `terraform apply tfplan`. This guarantees that the exact execution plan generated and reviewed during `plan` is what gets applied, preventing drift and matching automated GitHub Actions workflow patterns.
+
+### 2. Docker & ECR Authentication (WSL Integration)
+- **Error:** `401 Unauthorized` during `docker push` accompanied by `error saving credentials ... The stub received bad data.`
+- **Root Cause:** Docker Desktop's WSL credential helper (`desktop.exe`) attempted to write the ECR token to the Windows Credential Manager and failed, preventing Docker from storing valid authentication tokens.
+- **Resolution:** Updated `~/.docker/config.json` to clear `"credsStore": ""`. This forces Docker to retain ECR tokens directly in session memory without calling the broken helper.
+
+### 3. ECS Task Startup Runtime Fixes (`ModuleNotFoundError`)
+- **Error:** ECS container crashed on startup with `ModuleNotFoundError: No module named 'models'` (or `database`).
+- **Root Cause:** Running standard Uvicorn (`uvicorn app.main:app`) executes from the project root rather than within the `/app` subdirectory, breaking top-level relative imports that worked under `fastapi run`.
+- **Resolution:**
+  - Standardized all internal import statements across `app/*.py` using explicit package paths (e.g., `from app.database import Base`, `from app.models import ClaimModel`).
+  - Added `pytest.ini` with `pythonpath = .` to align local test imports with Uvicorn container execution.
+  - Switched startup command from `fastapi` CLI to `uvicorn` in the Dockerfile to eliminate missing dependency runtime crashes.
+
+### 4. Database Driver Configuration
+- **Resolution:** Standardized SQLAlchemy engine connection strings to use `postgresql+psycopg://` for compatibility with `psycopg` v3 drivers across both local Docker Compose and AWS Aurora Serverless v2 environments.
+
 ```
