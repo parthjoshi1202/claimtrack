@@ -1,0 +1,168 @@
+# 1. GitHub OIDC Identity Provider
+resource "aws_iam_openid_connect_provider" "github" {
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+}
+
+
+# 2. GHA Plan Role (Pull Requests Only)
+data "aws_iam_policy_document" "gha_plan_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:parthjoshi1202/claimtrack:pull_request"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "gha_plan_state_access" {
+  statement {
+    sid    = "StateBucketAccess"
+    effect = "Allow"
+    actions = [
+      "s3:ListBucket"
+    ]
+    resources = [aws_s3_bucket.terraform_state.arn]
+  }
+
+  statement {
+    sid    = "StateReadAccess"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject"
+    ]
+    resources = ["${aws_s3_bucket.terraform_state.arn}/*"]
+  }
+
+  statement {
+    sid    = "StateLockAccess"
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:DeleteObject"
+    ]
+    resources = ["${aws_s3_bucket.terraform_state.arn}/*.tflock"]
+  }
+}
+
+resource "aws_iam_role" "gha_plan" {
+  name               = "claimtrack-gha-plan"
+  assume_role_policy = data.aws_iam_policy_document.gha_plan_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "gha_plan_readonly" {
+  role       = aws_iam_role.gha_plan.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy" "gha_plan_state" {
+  name   = "claimtrack-gha-plan-state-policy"
+  role   = aws_iam_role.gha_plan.id
+  policy = data.aws_iam_policy_document.gha_plan_state_access.json
+}
+
+# 3. GHA Deploy Role (Main Branch Only)
+data "aws_iam_policy_document" "gha_deploy_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:parthjoshi1202/claimtrack:ref:refs/heads/main"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "gha_deploy_iam_policy" {
+  statement {
+    sid    = "ManageClaimtrackRoles"
+    effect = "Allow"
+    actions = [
+      "iam:CreateRole",
+      "iam:DeleteRole",
+      "iam:GetRole",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListInstanceProfilesForRole",
+      "iam:UpdateAssumeRolePolicy",
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy",
+      "iam:GetRolePolicy",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:TagRole",
+      "iam:UntagRole"
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/claimtrack-*"]
+  }
+
+  statement {
+    sid     = "PassRoleToECS"
+    effect  = "Allow"
+    actions = ["iam:PassRole"]
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/claimtrack-*"
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "gha_deploy" {
+  name               = "claimtrack-gha-deploy"
+  assume_role_policy = data.aws_iam_policy_document.gha_deploy_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "gha_deploy_poweruser" {
+  role       = aws_iam_role.gha_deploy.name
+  policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
+}
+
+resource "aws_iam_role_policy" "gha_deploy_iam" {
+  name   = "claimtrack-gha-deploy-iam-policy"
+  role   = aws_iam_role.gha_deploy.id
+  policy = data.aws_iam_policy_document.gha_deploy_iam_policy.json
+}
+
+# 4. Outputs
+output "gha_plan_role_arn" {
+  description = "ARN of IAM Role for GitHub Actions PR Planning"
+  value       = aws_iam_role.gha_plan.arn
+}
+
+output "gha_deploy_role_arn" {
+  description = "ARN of IAM Role for GitHub Actions Deployment"
+  value       = aws_iam_role.gha_deploy.arn
+}

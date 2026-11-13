@@ -30,3 +30,4 @@ operations are the point.
 - Never invent experience or metrics for the README; leave [placeholders] for numbers Parth measures himself.
 - Security basics always: least-privilege IAM, no secrets in code or state outputs, non-root containers.
 - End each step with 2 interview questions a bank's DevOps hiring manager could ask about it.
+- I made deploys manual because this is a personal account with a cost budget

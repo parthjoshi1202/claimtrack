@@ -92,4 +92,37 @@ aws ecr list-images --repository-name claimtrack-dev
 ### 4. Database Driver Configuration
 - **Resolution:** Standardized SQLAlchemy engine connection strings to use `postgresql+psycopg://` for compatibility with `psycopg` v3 drivers across both local Docker Compose and AWS Aurora Serverless v2 environments.
 
+
+
+## Step 5.1: CI/CD authentication — blocked OIDC, scoped IAM users instead
+
+### Issue hit
+- Applying `aws_iam_openid_connect_provider` failed with `AccessDenied` (explicit deny in a service control policy).
+- Cause: this AWS account type (AWS Settings "project") has an AWS-managed SCP, `DenyIAMRestrictedActions`, that denies `iam:*Provider*`, so no OIDC or SAML providers can be created.
+- AWS's published RCP for project accounts (`DenyAnyoneOutsideMyOrgAndAWS`) also covers STS and would likely block GitHub's web-identity call too. Not tested, because removing it also requires activation.
+- Editing either policy requires "activating advanced features", which is irreversible and permanently removes the account's **$20 hard spend limit**.
+
+### Decision
+- **Kept the $20 spend limit.** For a personal account on a fixed budget, a hard spending cap is worth more than keyless auth.
+- **Documented the OIDC design** in `docs/oidc-design.tf.example` (provider, PR-only plan role, main-only deploy role). Moving to OIDC in an account that allows it means applying that file and changing the credentials step in the workflows.
+- **Two least-privilege IAM users** in `infra/bootstrap/iam-ci.tf`:
+  - `claimtrack-gha-plan` (pull requests): `ReadOnlyAccess`, plus read access to the whole state bucket and write/delete **only on `*.tflock`**, so a PR run can lock state but never overwrite it.
+  - `claimtrack-gha-deploy` (manual deploy and nightly destroy): `PowerUserAccess`, plus IAM permissions limited to `claimtrack-*` roles in this account. `iam:PassRole` is in a separate statement restricted with `iam:PassedToService = ecs-tasks.amazonaws.com`.
+- **Access keys created with the AWS CLI** (`aws iam create-access-key`), not Terraform's `aws_iam_access_key`, so secret keys never appear in `terraform.tfstate`.
+- **Branch restriction moved from IAM to GitHub.** With OIDC, the trust policy's `sub` condition meant only `main` could deploy. With keys, AWS can't tell which branch is calling, so:
+  - Deploy keys are **environment secrets** in the GitHub environment `aws-deploy`, which only the `main` branch can use.
+  - Plan keys are repository secrets.
+  - GitHub doesn't pass secrets to pull requests from forks.
+
+### Risks accepted
+- **Long-lived keys can leak.** Mitigations: environment-scoped secrets, rotation every 90 days (calendar reminder set), immediate `aws iam delete-access-key` if exposed, CloudTrail to trace where a key was used.
+- **`PowerUserAccess` is broader than Terraform needs.** Production version: a custom policy generated from the actions CloudTrail records during one deploy and destroy cycle (IAM Access Analyzer policy generation).
+- **Terraform state contains the database password** (from `random_password`), so read access to the state bucket effectively means access to the password. Production version: `manage_master_user_password` so RDS keeps the password in Secrets Manager and it never enters state.
+
+### Bootstrap state re-import
+- **What happened:** bootstrap uses local state, and that state file no longer recorded the bucket. `apply` tried to create it again and failed with `BucketAlreadyOwnedByYou`.
+- **Fix:** backed up `terraform.tfstate`, then ran `terraform import` for all five resources (`aws_s3_bucket`, `versioning`, `server_side_encryption_configuration`, `public_access_block`, `bucket_policy`) until `terraform plan` showed `No changes`.
+- **Lesson:** local state for bootstrap is a single point of failure. Next improvement: move bootstrap state into the S3 bucket itself.
+
+
 ```
