@@ -15,12 +15,14 @@ resource "aws_vpc_security_group_ingress_rule" "task_from_alb" {
   to_port                      = var.container_port
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.alb.id
+  description                  = "Allow inbound application traffic from ALB security group"
 }
 
 resource "aws_vpc_security_group_egress_rule" "task_all_outbound" {
   security_group_id = aws_security_group.task.id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
+  description       = "Allow outbound traffic from ECS tasks for ECR pulls, SSM, and Aurora"
 }
 
 # CloudWatch Log Group with 1-day retention
@@ -31,11 +33,14 @@ resource "aws_cloudwatch_log_group" "app" {
   tags = {
     Name = "${var.name}-logs"
   }
+  #checkov:skip=CKV_AWS_158:Uses default CloudWatch Logs encryption; KMS CMK omitted to avoid $1/mo key cost.
+  #checkov:skip=CKV_AWS_338:Short log retention keeps CloudWatch storage near $0 in dev; 365+ days used in prod.
 }
 
 # ECS Cluster
 resource "aws_ecs_cluster" "main" {
   name = "${var.name}-cluster"
+  #checkov:skip=CKV_AWS_65:Container Insights disabled in dev to avoid custom CloudWatch metrics charges under $20 spend cap.
 }
 
 # Fargate Task Definition (ARM64 Architecture)
@@ -101,6 +106,7 @@ resource "aws_ecs_service" "app" {
   desired_count                     = 1
   launch_type                       = "FARGATE"
   health_check_grace_period_seconds = 60
+  #checkov:skip=CKV_AWS_333:Public IP required on Fargate tasks in public subnets to pull ECR images without a ~$32/mo NAT Gateway.
 
   network_configuration {
     subnets          = var.public_subnet_ids

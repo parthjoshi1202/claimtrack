@@ -16,6 +16,10 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 resource "aws_s3_bucket" "terraform_state" {
+  #checkov:skip=CKV_AWS_145:Uses free SSE-S3 (AES256) encryption to avoid $1/mo KMS CMK cost under $20 spend cap.
+  #checkov:skip=CKV_AWS_18:Single-account dev state bucket; S3 server access logging omitted to avoid extra storage overhead.
+  #checkov:skip=CKV_AWS_144:Single-region (us-east-2) dev environment; cross-region replication doubles S3 storage cost.
+  #checkov:skip=CKV2_AWS_62:No downstream event consumer required for Terraform state bucket in dev.
   bucket        = "claimtrack-tfstate-${data.aws_caller_identity.current.account_id}"
   force_destroy = false
 
@@ -78,4 +82,23 @@ resource "aws_s3_bucket_policy" "enforce_tls" {
 output "s3_bucket_name" {
   value       = aws_s3_bucket.terraform_state.id
   description = "Name of the created S3 bucket for Terraform state"
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "terraform_state_lifecycle" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    id     = "expire-old-versions-and-abort-incomplete"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
 }

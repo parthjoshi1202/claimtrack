@@ -82,3 +82,17 @@ jobs:
 
       - name: Terraform Plan
         run: terraform plan -input=false -no-color
+
+  checkov:
+    name: Checkov Terraform Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra
+          framework: terraform
+          quiet: true

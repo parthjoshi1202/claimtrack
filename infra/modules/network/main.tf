@@ -1,6 +1,7 @@
 # Fetch available availability zones in the active AWS region
 data "aws_availability_zones" "available" {
   state = "available"
+  #checkov:skip=CKV_AWS_394:Subnets slice the first two available AZs consistently in us-east-2; state tracks existing subnet AZs.
 }
 
 # 1. VPC Configuration
@@ -12,6 +13,11 @@ resource "aws_vpc" "main" {
   tags = {
     Name = var.name
   }
+  #checkov:skip=CKV2_AWS_11:VPC Flow Logs omitted to avoid continuous CloudWatch/S3 log ingestion fees under $20 spend cap; enabled in prod.
+}
+
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.main.id
 }
 
 # 2. Public Subnets (Iterates over public_subnet_cidrs)
@@ -25,6 +31,7 @@ resource "aws_subnet" "public" {
   tags = {
     Name = "${var.name}-public-${count.index == 0 ? "a" : "b"}"
   }
+  #checkov:skip=CKV_AWS_130:Public IPs required on public subnets so Fargate tasks pull ECR images without a ~$32/mo NAT Gateway.
 }
 
 # 3. Private Subnets (Iterates over private_subnet_cidrs)
