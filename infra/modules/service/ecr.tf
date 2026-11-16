@@ -1,7 +1,8 @@
 # Container Image Repository
 resource "aws_ecr_repository" "app" {
+  #checkov:skip=CKV_AWS_136:Uses free default AES-256 encryption to avoid $1/mo KMS CMK cost in dev.
   name                 = var.name
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = true # Dev environment enablement for easy destroy
 
   image_scanning_configuration {
