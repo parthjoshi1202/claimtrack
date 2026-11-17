@@ -1,0 +1,103 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-24.04-arm
+    environment: aws-deploy
+    defaults:
+      run:
+        working-directory: infra/envs/dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.0"
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      # Targeted apply bootstraps ECR before full apply so the image can be pushed before ECS creates the service.
+      - name: Bootstrap ECR repository
+        run: |
+          terraform apply \
+            -target=module.service.aws_ecr_repository.app \
+            -target=module.service.aws_ecr_lifecycle_policy.app \
+            -auto-approve \
+            -input=false
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Commit SHA tag pairs with IMMUTABLE ECR tags; re-running deploy on the same commit fails at push by design.
+      - name: Build and push ARM64 image
+        working-directory: .
+        run: |
+          REPO=$(terraform -chdir=infra/envs/dev output -raw ecr_repository_url)
+          docker build -t "$REPO:${{ github.sha }}" .
+          docker push "$REPO:${{ github.sha }}"
+
+      - name: Terraform Plan and Apply
+        run: |
+          terraform plan -input=false -var="image_tag=${{ github.sha }}" -out=tfplan
+          terraform apply -input=false tfplan
+
+      - name: Wait for ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster claimtrack-dev-cluster \
+            --services claimtrack-dev-service
+
+      - name: Smoke test /health endpoint
+        run: |
+          URL=$(terraform output -raw application_url)
+          HEALTH_URL="${URL%/}/health"
+          echo "Checking $HEALTH_URL..."
+          for i in $(seq 1 10); do
+            if curl -fsS "$HEALTH_URL"; then
+              echo ""
+              echo "Health check passed on attempt $i."
+              exit 0
+            fi
+            echo "Attempt $i/10 failed; retrying in 15s..."
+            sleep 15
+          done
+          echo "Health check failed after 10 attempts."
+          exit 1
+
+      - name: Write deployment summary
+        run: |
+          URL=$(terraform output -raw application_url)
+          REPO=$(terraform output -raw ecr_repository_url)
+          {
+            echo "### ClaimTrack Deployment Summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "| :--- | :--- |"
+            echo "| **Application URL** | ${URL} |"
+            echo "| **Swagger Docs** | ${URL%/}/docs |"
+            echo "| **Image Tag (Commit SHA)** | \`${{ github.sha }}\` |"
+            echo "| **ECR Repository** | \`${REPO}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

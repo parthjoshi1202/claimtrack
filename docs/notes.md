@@ -124,5 +124,14 @@ aws ecr list-images --repository-name claimtrack-dev
 - **Fix:** backed up `terraform.tfstate`, then ran `terraform import` for all five resources (`aws_s3_bucket`, `versioning`, `server_side_encryption_configuration`, `public_access_block`, `bucket_policy`) until `terraform plan` showed `No changes`.
 - **Lesson:** local state for bootstrap is a single point of failure. Next improvement: move bootstrap state into the S3 bucket itself.
 
+Checkov: 47 findings → 11 fixed, 36 skipped with documented reasons (cost, account SCP, or nightly destroy), each with a production alternative. Trivy blocks HIGH/CRITICAL CVEs that have a fix available. Infracost estimates monthly cost on every PR
 
+
+Why -target was used for ECR first: Bootstraps the ECR repo so the image can be pushed before the full apply creates the ECS service and moving ECR into a permanent bootstrap stack via terraform state rm + import is the cleaner next step.
+
+Why image_tag uses ${{ github.sha }}: Every running container maps 1:1 to an exact Git commit, and IMMUTABLE ECR tags prevent overwriting
+
+Why deploy.yml, nightly-destroy.yml, and ci.yml share concurrency.group?: Terraform-dev prevents concurrent runs from colliding on the S3/DynamoDB Terraform state lock.
+
+GitHub's 60-day inactivity rule for scheduled workflows in public repositorie
 ```
