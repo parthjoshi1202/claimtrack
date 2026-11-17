@@ -1,5 +1,34 @@
 # ClaimTrack: project brief for Claude
 
+## Architecture
+
+![ClaimTrack Architecture](docs/architecture.png)
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Dev[Developer] -->|PR to main| GHA_CI[GitHub Actions: CI<br/>Pytest · Terraform Plan · Checkov · Trivy · Infracost]
+    GHA_CI -->|Merge to main| Main[(main branch)]
+
+    Main -->|workflow_dispatch| GHA_Deploy[GitHub Actions: Deploy]
+    Main -->|04:00 UTC cron| GHA_Destroy[GitHub Actions: Nightly Destroy]
+
+    subgraph AWS [AWS us-east-2]
+        ECR[(Amazon ECR<br/>Immutable SHA Tags)]
+        ALB[Application Load Balancer]
+        ECS[ECS Fargate<br/>FastAPI ARM64]
+        RDS[(Aurora PostgreSQL<br/>Serverless v2)]
+        S3[(S3 Terraform State)]
+
+        ALB --> ECS --> RDS
+    end
+
+    GHA_Deploy -->|1. Bootstrap & Push Image| ECR
+    GHA_Deploy -->|2. Terraform Apply| AWS
+    GHA_Destroy -->|Terraform Destroy| AWS
+```
+
 ## What this is
 A portfolio DevOps project by Parth Joshi. A small FastAPI insurance-claims API
 (`/health`, `POST /claims`, `GET /claims/{id}`, `PATCH /claims/{id}/status`;
@@ -31,3 +60,4 @@ operations are the point.
 - Security basics always: least-privilege IAM, no secrets in code or state outputs, non-root containers.
 - End each step with 2 interview questions a bank's DevOps hiring manager could ask about it.
 - I made deploys manual because this is a personal account with a cost budget
+- GitHub disables scheduled workflows in public repos after 60 days without commits (re-enable in the Actions tab if paused).
